@@ -1,0 +1,47 @@
+name: Обновить выпуски «Держи темп»
+
+on:
+  schedule:
+    - cron: '17 * * * *'   # каждый час в :17 по UTC
+  workflow_dispatch: {}     # кнопка «Run workflow» — обновить прямо сейчас
+  push:
+    branches: [main]
+    paths: ['config.js', 'classify.js', 'build.js', '.github/workflows/update.yml']
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: update-feed
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Собрать docs/episodes.json из ленты Mave
+        run: node build.js
+      - name: Сохранить в репозитории, если что-то изменилось
+        run: |
+          if git diff --quiet -- docs/episodes.json && git ls-files --error-unmatch docs/episodes.json >/dev/null 2>&1; then echo "Изменений нет"; exit 0; fi
+          git config user.name "derzhitemp-bot"
+          git config user.email "derzhitemp-bot@users.noreply.github.com"
+          git add docs/episodes.json
+          git commit -m "Обновлены выпуски $(date -u +'%Y-%m-%d %H:%M')"
+          git push
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deploy
+        uses: actions/deploy-pages@v4
